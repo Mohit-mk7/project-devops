@@ -1,0 +1,19 @@
+- name: My first play
+  hosts: myhosts
+  become: true
+  tasks:
+    - name: Ping my hosts
+      ansible.builtin.ping:
+
+    - name: Print message
+      ansible.builtin.debug:
+        msg: Hello world
+
+    - name: Update APT package index
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: Install Ansible
+      ansible.builtin.apt:
+        name: ansible
+        state: present
