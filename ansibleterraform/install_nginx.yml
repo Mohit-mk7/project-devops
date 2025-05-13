@@ -1,0 +1,13 @@
+- name: Install Nginx on both servers
+  hosts: all
+  become: true
+  tasks:
+    - name: Update APT package index
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present

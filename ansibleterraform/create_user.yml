@@ -1,0 +1,19 @@
+---
+- name: Create user 'mohit' on all servers
+  hosts: all
+  become: yes
+  tasks:
+    - name: Create user 'mohit'
+      ansible.builtin.user:
+        name: mohit
+        shell: /bin/bash
+        state: present
+        create_home: yes
+
+    - name: Add 'mohit' to sudoers
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/mohit
+        content: "mohit ALL=(ALL) NOPASSWD:ALL\n"
+        owner: root
+        group: root
+        mode: '0440'
