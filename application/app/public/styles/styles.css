@@ -1,0 +1,7 @@
+body {
+    background-color: red; /* Set the background color to red */
+    color: white; /* Set the text color to white for better visibility */
+    font-family: Arial, sans-serif; /* Optional: sets a clean font */
+    text-align: center; /* Optional: centers the text */
+    padding-top: 50px; /* Optional: adds some spacing from the top */
+}
