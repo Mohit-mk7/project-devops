@@ -1,0 +1,17 @@
+FROM node:18
+
+WORKDIR /app
+
+# Copy and install dependencies
+COPY package.json ./
+RUN npm install
+
+# Optional: build info
+ARG BUILD_ID
+RUN echo "Build ID: ${BUILD_ID}" > /app/build-info.txt
+
+# Copy source code
+COPY . .
+
+# Start the app
+CMD ["node", "app.js"]
