@@ -12,4 +12,6 @@ resource "aws_ecr_repository" "this" {
   tags = {
     Name = var.ecr_name
   }
+
+  force_delete = true
 }

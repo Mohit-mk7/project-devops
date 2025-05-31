@@ -31,3 +31,16 @@ variable "jump_ssh_cidr" {
   type    = string
   default = "0.0.0.0/0"
 }
+
+
+variable "alb_sg_id" {
+  description = "ALB security group ID to allow traffic from ALB to private server"
+  type        = string
+}
+
+output "ecr_role_name" {
+  value = aws_iam_role.ecr_access.name
+}
+
+
+
