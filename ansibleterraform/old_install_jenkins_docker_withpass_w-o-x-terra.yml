@@ -45,9 +45,6 @@
 - name: Install Jenkins and configure Docker access on jump server
   hosts: jump
   become: yes
-  vars:
-    local_password_path: "/home/ac190-mohit/Documents/jenkins_password.txt"
-
   tasks:
     - name: Install Java 17
       apt:
@@ -106,12 +103,7 @@
       debug:
         msg: "Initial Jenkins password: {{ jenkins_password['content'] | b64decode }}"
 
-    - name: Save Jenkins password to local file in Terraform directory
-      local_action:
-        module: copy
-        content: "{{ jenkins_password['content'] | b64decode }}"
-        dest: "/home/ac190-mohit/Music/terraform-ansible/terraform/jenkins_output.txt"
-      become: false
+
 
     - name: Copy PEM key to Jenkins home
       copy:
@@ -120,7 +112,6 @@
         owner: jenkins
         group: jenkins
         mode: '0400'
-
 
 - name: Configure Docker access for ubuntu user on private server
   hosts: private
