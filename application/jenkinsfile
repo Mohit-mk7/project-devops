@@ -1,0 +1,143 @@
+properties([
+    parameters([
+        string(name: 'ROLLBACK_VERSION', defaultValue: '', description: 'Enter Docker image tag to rollback, or leave empty to deploy latest')
+    ])
+])
+
+pipeline {
+    agent any
+
+    environment {
+        IMAGE_NAME = "myapplication"
+        IMAGE_TAG = "${params.ROLLBACK_VERSION ?: BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Load Secrets') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws-region-id', variable: 'AWS_REGION'),
+                    string(credentialsId: 'aws-account-id', variable: 'AWS_ACCOUNT_ID'),
+                    string(credentialsId: 'private-server-ip', variable: 'PRIVATE_SERVER_IP')
+                ]) {
+                    script {
+                        env.AWS_REGION = AWS_REGION
+                        env.AWS_ACCOUNT_ID = AWS_ACCOUNT_ID
+                        env.PRIVATE_SERVER_IP = PRIVATE_SERVER_IP
+                        env.ECR_REPOSITORY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_NAME}"
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            when {
+                expression { return params.ROLLBACK_VERSION == '' }
+            }
+            steps {
+                sh '''
+                    echo "🔨 Building Docker Image..."
+                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                    echo "✅ Docker image built: ${IMAGE_NAME}:${IMAGE_TAG}"
+                '''
+            }
+        }
+
+        stage('Login to AWS ECR') {
+            steps {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-creds']
+                ]) {
+                    sh '''
+                        echo "🔑 Logging in to AWS ECR..."
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPOSITORY}
+                        echo "✅ Login successful."
+                    '''
+                }
+            }
+        }
+
+        stage('Push Docker Image to ECR') {
+            when {
+                expression { return params.ROLLBACK_VERSION == '' }
+            }
+            steps {
+                sh '''
+                    echo "🔄 Tagging image..."
+                    docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_REPOSITORY}:${IMAGE_TAG}
+
+                    echo "🚀 Pushing Docker Image to AWS ECR..."
+                    docker push ${ECR_REPOSITORY}:${IMAGE_TAG}
+
+                    echo "✅ Docker image pushed: ${ECR_REPOSITORY}:${IMAGE_TAG}"
+                '''
+            }
+        }
+
+        stage('Cleanup Local Docker Images (Jenkins Build Server)') {
+            steps {
+                sh '''
+                    echo "🧹 Cleaning local images..."
+                    docker image prune -f
+                    docker images "${IMAGE_NAME}" --format "{{.ID}}" | uniq | xargs -r docker rmi -f || true
+                '''
+            }
+        }
+
+        stage('Pull from ECR on Private Server') {
+            steps {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-creds']
+                ]) {
+                    sh '''
+                        echo "📥 Pulling image on private server..."
+                        ssh -o StrictHostKeyChecking=no -i ~/my-ec2-key.pem ubuntu@${PRIVATE_SERVER_IP} "
+                            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPOSITORY}
+                            docker pull ${ECR_REPOSITORY}:${IMAGE_TAG}
+                        "
+                        echo "✅ Pulled on private server."
+                    '''
+                }
+            }
+        }
+
+        stage('Run Docker Container on Private Server') {
+            steps {
+                sh '''
+                    echo "🚀 Running container on private server..."
+                    ssh -o StrictHostKeyChecking=no -i ~/my-ec2-key.pem ubuntu@${PRIVATE_SERVER_IP} "
+                        docker stop ${IMAGE_NAME} || true
+                        docker rm ${IMAGE_NAME} || true
+                        docker run -d --name ${IMAGE_NAME} -p 3005:3005 ${ECR_REPOSITORY}:${IMAGE_TAG}
+                    "
+                    echo "✅ Container is running on port 3005"
+                '''
+            }
+        }
+
+        stage('Cleanup Old Images on Private Server') {
+            when {
+                expression { return params.ROLLBACK_VERSION == '' }
+            }
+            steps {
+                sh '''
+                    echo "🧹 Cleaning old Docker images on private server..."
+                    ssh -o StrictHostKeyChecking=no -i ~/my-ec2-key.pem ubuntu@${PRIVATE_SERVER_IP} "
+                        docker image prune -f
+                        docker images '${IMAGE_NAME}' --format '{{.ID}}' | uniq | xargs -r docker rmi -f || true
+                    "
+                    echo "✅ Cleanup done on private server."
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '🎉 Pipeline succeeded! Deployed or rolled back successfully.'
+        }
+        failure {
+            echo '❌ Deployment failed! Check logs.'
+        }
+    }
+}
